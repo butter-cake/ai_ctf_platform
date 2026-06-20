@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+{% block title %}Path Traversal — VulnLab{% endblock %}
+{% block content %}
+<a class="back-link" href="/">← Back to Challenges</a>
+<div class="challenge-page" data-challenge="path">
+
+  <div class="ch-header">
+    <h2>{{ challenge.name }}</h2>
+    <div class="ch-meta">
+      <span class="badge badge-easy">Easy</span>
+      <span class="badge badge-points">{{ challenge.points }} pts</span>
+      <span class="badge badge-cat">{{ challenge.category }}</span>
+    </div>
+    <p class="ch-desc">
+      The file viewer joins a user-supplied filename with the base directory
+      <strong>without sanitisation</strong>. Traverse out of <code>static/files/</code>
+      to read <code>ctf_flag_path.txt</code> stored two levels above.
+    </p>
+  </div>
+
+  <div class="ch-section">
+    <h3>📂 File Viewer</h3>
+    <form method="GET">
+      <div class="input-row">
+        <input type="text" name="file" value="{{ filename }}" placeholder="welcome.txt" autofocus>
+        <button type="submit" class="btn btn-primary">Read File</button>
+      </div>
+    </form>
+
+    <div style="margin-top:12px">
+      <div class="text-dim" style="font-size:.8rem;margin-bottom:4px">
+        Reading: <code>static/files/{{ filename }}</code>
+      </div>
+    </div>
+
+    {% if error %}
+    <div class="alert alert-error mt-10">{{ error }}</div>
+    {% elif content is not none %}
+    <div class="terminal" style="margin-top:10px">{{ content }}</div>
+    {% endif %}
+  </div>
+
+  <div class="ch-section">
+    <h3>🔍 Vulnerable Code</h3>
+    <div class="code-block">base_dir = os.path.join(app_root, 'static', 'files')
+filename = request.args.get('file', 'welcome.txt')
+<span class="code-hl"># ⚠ os.path.join does NOT prevent escaping the base_dir
+# with '../' sequences!</span>
+filepath = os.path.join(base_dir, filename)
+open(filepath, 'r').read()</div>
+  </div>
+
+  <div class="ch-section">
+    <h3>📁 Directory Structure (hint)</h3>
+    <div class="code-block">ctf-platform/
+├── app.py
+├── ctf_flag_path.txt        ← 🎯 target
+├── ctf_flag_cmdi.txt
+└── static/
+    └── files/               ← base_dir
+        ├── welcome.txt
+        ├── about.txt
+        └── readme.txt</div>
+  </div>
+
+  <div class="ch-section">
+    <h3>💡 Hints</h3>
+    <button class="hint-toggle" onclick="toggleHint('h1')">▶ Hint 1</button>
+    <div class="hint-box" id="h1"><code>../</code> moves one directory up.
+    From <code>static/files/</code>, you need to go up twice to reach the project root.</div>
+
+    <button class="hint-toggle mt-10" onclick="toggleHint('h2')">▶ Hint 2</button>
+    <div class="hint-box" id="h2">Try reading <code>../about.txt</code> first —
+    wait, that's still inside <code>static/</code>. How many <code>../</code> steps
+    reach the project root?</div>
+
+    <button class="hint-toggle mt-10" onclick="toggleHint('h3')">▶ Hint 3 (spoiler)</button>
+    <div class="hint-box" id="h3">
+      Windows: <code class="text-red">../../ctf_flag_path.txt</code><br>
+      or use forward slashes: <code class="text-red">../../ctf_flag_path.txt</code>
+    </div>
+  </div>
+
+  {% if session.username %}
+  <div class="ch-section" data-challenge="path">
+    <h3>🚩 Submit Flag</h3>
+    <div class="flag-row">
+      <input type="text" id="flag-input" placeholder="FLAG{...}">
+      <button id="flag-btn" class="btn btn-primary" onclick="submitFlag('path')">Submit</button>
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-warning"><a href="/login" style="color:inherit">Login</a> to submit a flag.</div>
+  {% endif %}
+
+</div>
+{% endblock %}

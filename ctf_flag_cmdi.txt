@@ -1,0 +1,4 @@
+FLAG{cmd_injection_rce_2024}
+
+Congrats! You executed arbitrary commands on the server via command injection.
+This is why user input must NEVER be passed directly to shell commands.

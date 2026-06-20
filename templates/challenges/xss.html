@@ -1,0 +1,66 @@
+{% extends 'base.html' %}
+{% block title %}Reflected XSS — VulnLab{% endblock %}
+{% block content %}
+<a class="back-link" href="/">← Back to Challenges</a>
+<div class="challenge-page" data-challenge="xss">
+
+  <div class="ch-header">
+    <h2>{{ challenge.name }}</h2>
+    <div class="ch-meta">
+      <span class="badge badge-easy">Easy</span>
+      <span class="badge badge-points">{{ challenge.points }} pts</span>
+      <span class="badge badge-cat">{{ challenge.category }}</span>
+    </div>
+    <p class="ch-desc">
+      The greeting below reflects the <code>name</code> URL parameter directly into the page
+      <strong>without escaping</strong>. A cookie containing the flag has been set on this page.
+      Inject JavaScript to read <code>document.cookie</code>.
+    </p>
+  </div>
+
+  <div class="ch-section">
+    <h3>👋 Greeting App</h3>
+    <form method="GET">
+      <div class="input-row">
+        <input type="text" name="name" value="{{ name }}" placeholder="Enter your name…" autofocus>
+        <button type="submit" class="btn btn-primary">Greet Me</button>
+      </div>
+    </form>
+
+    {% if name %}
+    <hr class="divider">
+    <p style="font-size:1.1rem">Hello, {{ name | safe }}!</p>
+    {% endif %}
+  </div>
+
+  <div class="ch-section">
+    <h3>💡 Hints</h3>
+    <button class="hint-toggle" onclick="toggleHint('h1')">▶ Hint 1</button>
+    <div class="hint-box" id="h1">The <code>name</code> parameter is injected raw into HTML.
+    What HTML tag executes JavaScript?</div>
+
+    <button class="hint-toggle mt-10" onclick="toggleHint('h2')">▶ Hint 2</button>
+    <div class="hint-box" id="h2">Try: <code class="text-red">&lt;script&gt;alert(1)&lt;/script&gt;</code>
+    as your name. If an alert pops, XSS works. Then use
+    <code>alert(document.cookie)</code> to reveal the flag.</div>
+
+    <button class="hint-toggle mt-10" onclick="toggleHint('h3')">▶ Hint 3 (spoiler)</button>
+    <div class="hint-box" id="h3">
+      Visit: <code class="text-red">/challenges/xss?name=&lt;script&gt;alert(document.cookie)&lt;/script&gt;</code>
+    </div>
+  </div>
+
+  {% if session.username %}
+  <div class="ch-section" data-challenge="xss">
+    <h3>🚩 Submit Flag</h3>
+    <div class="flag-row">
+      <input type="text" id="flag-input" placeholder="FLAG{...}">
+      <button id="flag-btn" class="btn btn-primary" onclick="submitFlag('xss')">Submit</button>
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-warning"><a href="/login" style="color:inherit">Login</a> to submit a flag.</div>
+  {% endif %}
+
+</div>
+{% endblock %}

@@ -1,0 +1,5 @@
+FLAG{path_traversal_etc_passwd}
+
+Congratulations! You escaped the web root via path traversal.
+In a real Linux server this could expose /etc/passwd, SSH keys,
+source code, or database credentials.

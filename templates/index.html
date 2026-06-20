@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+{% block title %}VulnLab — Home{% endblock %}
+
+{% block content %}
+<div class="hero">
+  <h1 class="glitch" data-type="[ VulnLab CTF ]"><span data-type="[ VulnLab CTF ]">[ VulnLab CTF ]</span></h1>
+  <p>A hands-on web security training platform.<br>
+     Find and exploit intentional vulnerabilities to capture flags.</p>
+  <div class="hero-stats">
+    <div class="stat"><div class="stat-val">{{ challenges|length + (dynamic_challenges|length) }}</div><div class="stat-lbl">Challenges</div></div>
+    <div class="stat"><div class="stat-val">{{ solved|length }}</div><div class="stat-lbl">Solved</div></div>
+    <div class="stat"><div class="stat-val">{{ score }}</div><div class="stat-lbl">Points</div></div>
+  </div>
+</div>
+
+{% if not session.username %}
+<div class="alert alert-info" style="margin-bottom:24px">
+  🔐 <a href="/register" style="color:inherit;font-weight:700">Register</a> or
+  <a href="/login" style="color:inherit;font-weight:700">Login</a> to track your score.
+</div>
+{% endif %}
+
+<div class="section-title">// Available Challenges</div>
+
+<div class="challenges-grid">
+  {% for cid, ch in challenges.items() %}
+  <a class="challenge-card {% if cid in solved %}solved{% endif %}"
+     href="{{ ch.url }}">
+    {% if cid in solved %}<span class="solved-badge">✓ SOLVED</span>{% endif %}
+    <div class="card-title">{{ ch.name }}</div>
+    <div class="card-meta">
+      <span class="badge badge-{{ ch.difficulty|lower }}">{{ ch.difficulty }}</span>
+      <span class="badge badge-points">{{ ch.points }} pts</span>
+      <span class="badge badge-cat">{{ ch.category }}</span>
+    </div>
+    <div class="card-desc">{{ ch.desc }}</div>
+    <span class="btn btn-primary btn-sm">Start →</span>
+  </a>
+  {% endfor %}
+</div>
+
+{% if dynamic_challenges %}
+<div class="section-title" style="margin-top:32px">// AI-Generated Challenges</div>
+<div class="challenges-grid">
+  {% for ch in dynamic_challenges %}
+  <a class="challenge-card {% if ch.id in solved %}solved{% endif %}"
+     href="/challenges/d/{{ ch.id }}">
+    {% if ch.id in solved %}<span class="solved-badge">✓ SOLVED</span>{% endif %}
+    {% set model_names = {
+      'claude-haiku-4-5-20251001': 'Haiku 4.5',
+      'claude-sonnet-4-6': 'Sonnet 4.6',
+      'claude-opus-4-8': 'Opus 4.8',
+      'claude-3-5-haiku-20241022': 'Haiku 3.5',
+      'claude-3-5-sonnet-20241022': 'Sonnet 3.5',
+      'claude-3-opus-20240229': 'Opus 3'
+    } %}
+    <span class="badge" style="position:absolute;top:10px;right:10px;background:#0a0a14;color:#b060ff;border:1px solid #5a2a99;font-size:.6rem;letter-spacing:1px">
+      ✦ {{ model_names.get(ch.model, 'AI') }}
+    </span>
+    <div class="card-title">{{ ch.name }}</div>
+    <div class="card-meta">
+      <span class="badge badge-{{ ch.difficulty|lower }}">{{ ch.difficulty }}</span>
+      <span class="badge badge-points">{{ ch.points }} pts</span>
+      <span class="badge badge-cat">{{ ch.category }}</span>
+    </div>
+    <div class="card-desc">{{ ch.description }}</div>
+    <span class="btn btn-primary btn-sm">Start →</span>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

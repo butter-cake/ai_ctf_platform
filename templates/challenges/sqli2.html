@@ -1,0 +1,89 @@
+{% extends 'base.html' %}
+{% block title %}SQLi Data Exfiltration — VulnLab{% endblock %}
+{% block content %}
+<a class="back-link" href="/">← Back to Challenges</a>
+<div class="challenge-page" data-challenge="sqli2">
+
+  <div class="ch-header">
+    <h2>{{ challenge.name }}</h2>
+    <div class="ch-meta">
+      <span class="badge badge-medium">Medium</span>
+      <span class="badge badge-points">{{ challenge.points }} pts</span>
+      <span class="badge badge-cat">{{ challenge.category }}</span>
+    </div>
+    <p class="ch-desc">
+      The product search below is vulnerable to <strong>UNION-based SQL injection</strong>.
+      A hidden table called <code>secret_flags</code> contains the flag.
+      Use a UNION SELECT to read it.
+    </p>
+  </div>
+
+  <div class="ch-section">
+    <h3>🛒 Product Search</h3>
+    <form method="GET">
+      <div class="input-row">
+        <input type="text" name="search" value="{{ search }}" placeholder="Search products…" autofocus>
+        <button type="submit" class="btn btn-primary">Search</button>
+      </div>
+    </form>
+  </div>
+
+  {% if search %}
+  <div class="ch-section">
+    <h3>📋 Generated SQL</h3>
+    <div class="code-block">{{ query }}</div>
+  </div>
+
+  {% if error %}
+    <div class="alert alert-error">DB Error: {{ error }}</div>
+  {% elif products %}
+  <div class="ch-section">
+    <h3>📦 Results</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>ID</th><th>Name</th><th>Price</th><th>Description</th></tr></thead>
+        <tbody>
+          {% for p in products %}
+          <tr><td>{{ p[0] }}</td><td>{{ p[1] }}</td><td>{{ p[2] }}</td><td>{{ p[3] }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+    <div class="alert alert-info">No products found.</div>
+  {% endif %}
+  {% endif %}
+
+  <div class="ch-section">
+    <h3>💡 Hints</h3>
+    <button class="hint-toggle" onclick="toggleHint('h1')">▶ Hint 1</button>
+    <div class="hint-box" id="h1">A UNION attack lets you append rows from a different table.
+    First, find how many columns the original query returns (use <code>ORDER BY 1</code>, <code>ORDER BY 2</code>…
+    until you get an error).</div>
+
+    <button class="hint-toggle mt-10" onclick="toggleHint('h2')">▶ Hint 2</button>
+    <div class="hint-box" id="h2">The query returns 4 columns. The hidden table is called
+    <code>secret_flags</code> with columns <code>id, flag_name, flag_value</code>.</div>
+
+    <button class="hint-toggle mt-10" onclick="toggleHint('h3')">▶ Hint 3 (spoiler)</button>
+    <div class="hint-box" id="h3">
+      Search for:<br>
+      <code class="text-red">%' UNION SELECT id,flag_name,0,flag_value FROM secret_flags--</code>
+    </div>
+  </div>
+
+  {% if session.username %}
+  <div class="ch-section" data-challenge="sqli2">
+    <h3>🚩 Submit Flag</h3>
+    <div class="flag-row">
+      <input type="text" id="flag-input" placeholder="FLAG{...}">
+      <button id="flag-btn" class="btn btn-primary" onclick="submitFlag('sqli2')">Submit</button>
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-warning"><a href="/login" style="color:inherit">Login</a> to submit a flag.</div>
+  {% endif %}
+
+</div>
+{% endblock %}

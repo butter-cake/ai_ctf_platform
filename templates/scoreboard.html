@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% block title %}Scoreboard — VulnLab{% endblock %}
+{% block content %}
+<a class="back-link" href="/">← Back to Challenges</a>
+<div class="ch-section">
+  <h3>🏆 Scoreboard</h3>
+  <p style="font-size:.78rem;color:var(--text-dim);margin-bottom:12px">
+    Ranked by score (desc) · ties broken by total solve time (asc)
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Player</th>
+          <th>Challenges Solved</th>
+          <th>Score</th>
+          <th>Total Solve Time</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr class="{% if loop.index == 1 %}rank-gold{% elif loop.index == 2 %}rank-silver{% elif loop.index == 3 %}rank-bronze{% endif %}">
+          <td>{{ loop.index }}</td>
+          <td><a href="/user/{{ u.username }}" class="profile-link">{{ u.username }}</a></td>
+          <td>{{ u.solved_count }}</td>
+          <td>{{ u.score }} pts</td>
+          <td style="color:var(--yellow)">{{ u.total_solve_time or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-dim" style="text-align:center;padding:20px">
+          No players yet. Register and start hacking!
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

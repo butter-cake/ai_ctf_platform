@@ -1,0 +1,284 @@
+{% extends 'base.html' %}
+{% block title %}{{ ch.name }} — VulnLab{% endblock %}
+{% block content %}
+<a class="back-link" href="/">← Back to Challenges</a>
+<div class="challenge-page" data-challenge="{{ ch.id }}">
+
+  <!-- Header -->
+  <div class="ch-header">
+    <h2>{{ ch.name }}</h2>
+    <div class="ch-meta">
+      <span class="badge badge-{{ ch.difficulty|lower }}">{{ ch.difficulty }}</span>
+      <span class="badge badge-points">{{ ch.points }} pts</span>
+      <span class="badge badge-cat">{{ ch.category }}</span>
+      <span class="badge" style="background:#0a0a14;color:#666;border:1px solid #222;font-size:.62rem;letter-spacing:1px">AI</span>
+    </div>
+    <p class="ch-desc">{{ ch.description }}</p>
+    {% if ch.context %}
+    <p class="ch-desc" style="margin-top:8px;color:var(--text-dim);font-style:italic">{{ ch.context }}</p>
+    {% endif %}
+  </div>
+
+  {# ── sqli_login ────────────────────────────────────────────────────────── #}
+  {% if ch.vuln_type == 'sqli_login' %}
+  <div class="ch-section">
+    <h3>// Login Portal</h3>
+    {% if result %}
+      {% if result.success %}
+      <div class="alert alert-success">✓ Logged in as <strong>{{ result.user }}</strong>!
+        Secret: <strong>{{ result.secret }}</strong></div>
+      {% else %}
+      <div class="alert alert-error">✗ {{ result.message }}</div>
+      {% endif %}
+    {% endif %}
+    <form method="POST">
+      <div class="form-group"><label>Username</label>
+        <input type="text" name="username" autofocus placeholder="admin"></div>
+      <div class="form-group"><label>Password</label>
+        <input type="password" name="password" placeholder="••••••••"></div>
+      <button type="submit" class="btn btn-primary">Login</button>
+    </form>
+  </div>
+  {% if query %}
+  <div class="ch-section"><h3>// Generated Query</h3>
+    <div class="code-block">{{ query }}</div></div>
+  {% endif %}
+  <div class="ch-section"><h3>// Hints</h3>
+    <button class="hint-toggle" onclick="toggleHint('h1')">▶ Hint 1</button>
+    <div class="hint-box" id="h1">What happens if you put a <code>'</code> in the username?</div>
+    <button class="hint-toggle mt-10" onclick="toggleHint('h2')">▶ Hint 2</button>
+    <div class="hint-box" id="h2">Try username: <code class="text-red">admin' --</code></div>
+  </div>
+
+  {# ── sqli_union ────────────────────────────────────────────────────────── #}
+  {% elif ch.vuln_type == 'sqli_union' %}
+  <div class="ch-section">
+    <h3>// Product Search</h3>
+    <form method="GET">
+      <div class="input-row">
+        <input type="text" name="search" value="{{ search or '' }}" placeholder="Search products…" autofocus>
+        <button type="submit" class="btn btn-primary">Search</button>
+      </div>
+    </form>
+  </div>
+  {% if search %}
+  <div class="ch-section"><h3>// Generated Query</h3>
+    <div class="code-block">{{ query }}</div></div>
+  {% if error %}
+  <div class="alert alert-error">DB Error: {{ error }}</div>
+  {% elif products %}
+  <div class="ch-section"><h3>// Results</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>ID</th><th>Name</th><th>Price</th><th>Description</th></tr></thead>
+      <tbody>{% for p in products %}
+        <tr><td>{{ p[0] }}</td><td>{{ p[1] }}</td><td>{{ p[2] }}</td><td>{{ p[3] }}</td></tr>
+      {% endfor %}</tbody>
+    </table></div>
+  </div>
+  {% else %}
+  <div class="alert alert-info">No results.</div>
+  {% endif %}
+  {% endif %}
+  <div class="ch-section"><h3>// Hints</h3>
+    <button class="hint-toggle" onclick="toggleHint('h1')">▶ Hint 1</button>
+    <div class="hint-box" id="h1">The query returns 4 columns. Use UNION to append rows from a
+      hidden table:<br><code class="text-red">%' UNION SELECT id,flag_name,0,flag_value FROM secret_flags--</code></div>
+  </div>
+
+  {# ── xss_reflected ────────────────────────────────────────────────────── #}
+  {% elif ch.vuln_type == 'xss_reflected' %}
+  <div class="ch-section">
+    <h3>// Greeting App</h3>
+    <form method="GET">
+      <div class="input-row">
+        <input type="text" name="name" value="{{ name or '' }}" placeholder="Your name…" autofocus>
+        <button type="submit" class="btn btn-primary">Greet Me</button>
+      </div>
+    </form>
+    {% if name %}
+    <hr class="divider">
+    <p style="font-size:1.1rem">Hello, {{ name | safe }}!</p>
+    {% endif %}
+  </div>
+  <div class="ch-section"><h3>// Hints</h3>
+    <button class="hint-toggle" onclick="toggleHint('h1')">▶ Hint 1</button>
+    <div class="hint-box" id="h1">The <code>name</code> param is reflected without escaping.
+      Try <code class="text-red">&lt;script&gt;alert(document.cookie)&lt;/script&gt;</code>.
+      The flag is in cookie <code>dyn_{{ ch.id }}</code>.</div>
+  </div>
+
+  {# ── xss_stored ────────────────────────────────────────────────────────── #}
+  {% elif ch.vuln_type == 'xss_stored' %}
+  <div class="ch-section">
+    <h3>// Post a Comment</h3>
+    <form method="POST">
+      <div class="form-group"><label>Author</label>
+        <input type="text" name="author" placeholder="Anonymous"></div>
+      <div class="form-group"><label>Comment</label>
+        <textarea name="comment" placeholder="Share your thoughts…"></textarea></div>
+      <button type="submit" class="btn btn-primary">Post</button>
+    </form>
+  </div>
+  <div class="ch-section"><h3>// Comments</h3>
+    {% for c in comments %}
+    <div class="comment">
+      <div class="comment-author">{{ c.author }} — <small class="text-dim">{{ c.ts }}</small></div>
+      <div class="comment-body">{{ c.comment | safe }}</div>
+    </div>
+    {% else %}<p class="text-dim">No comments yet.</p>
+    {% endfor %}
+  </div>
+  <div class="ch-section">
+    <h3>// Admin Bot Simulator</h3>
+    <p class="text-dim" style="font-size:.85rem;margin-bottom:12px">
+      Simulate an admin visiting the page with cookie <code>dyn_{{ ch.id }}</code> set to the flag.
+    </p>
+    <button class="btn btn-warning" onclick="runDynBot('{{ ch.id }}')">Simulate Admin Visit</button>
+    <div class="terminal mt-10" id="bot-output">[ Waiting for bot… ]</div>
+  </div>
+  <div class="ch-section"><h3>// Hints</h3>
+    <button class="hint-toggle" onclick="toggleHint('h1')">▶ Hint 1</button>
+    <div class="hint-box" id="h1">Post <code class="text-red">&lt;script&gt;document.location='/?c='+document.cookie&lt;/script&gt;</code>
+      then click Simulate Admin Visit.</div>
+  </div>
+
+  {# ── cmdi ──────────────────────────────────────────────────────────────── #}
+  {% elif ch.vuln_type == 'cmdi' %}
+  <div class="ch-section">
+    <h3>// Network Ping Tool</h3>
+    <form method="POST">
+      <div class="form-group"><label>Target Host / IP</label>
+        <div class="input-row">
+          <input type="text" name="target" value="{{ request.form.get('target','') }}"
+                 placeholder="127.0.0.1" autofocus>
+          <button type="submit" class="btn btn-primary">Ping</button>
+        </div>
+      </div>
+    </form>
+    {% if command %}
+    <div style="margin-top:12px">
+      <div class="text-dim" style="font-size:.8rem;margin-bottom:4px">Command run:</div>
+      <div class="code-block">{{ command }}</div>
+    </div>
+    {% endif %}
+    {% if output is not none %}
+    <div class="terminal mt-10">{{ output }}</div>
+    {% endif %}
+  </div>
+  <div class="ch-section"><h3>// Hints</h3>
+    <button class="hint-toggle" onclick="toggleHint('h1')">▶ Hint 1</button>
+    <div class="hint-box" id="h1">The flag is in <code>{{ ch.id }}_flag.txt</code>.
+      Inject: <code class="text-red">127.0.0.1; cat {{ ch.id }}_flag.txt</code></div>
+  </div>
+
+  {# ── path ──────────────────────────────────────────────────────────────── #}
+  {% elif ch.vuln_type == 'path' %}
+  <div class="ch-section">
+    <h3>// File Viewer</h3>
+    <form method="GET">
+      <div class="input-row">
+        <input type="text" name="file" value="{{ filename or 'welcome.txt' }}"
+               placeholder="welcome.txt" autofocus>
+        <button type="submit" class="btn btn-primary">Read</button>
+      </div>
+    </form>
+    <p class="text-dim" style="font-size:.8rem;margin-top:8px">
+      Reading from: <code>static/files/{{ filename or 'welcome.txt' }}</code>
+    </p>
+    {% if error %}
+    <div class="alert alert-error mt-10">{{ error }}</div>
+    {% elif content is not none %}
+    <div class="terminal mt-10">{{ content }}</div>
+    {% endif %}
+  </div>
+  <div class="ch-section"><h3>// Hints</h3>
+    <button class="hint-toggle" onclick="toggleHint('h1')">▶ Hint 1</button>
+    <div class="hint-box" id="h1">The flag file <code>{{ ch.id }}_flag.txt</code> is two levels above
+      <code>static/files/</code>. Try: <code class="text-red">../../{{ ch.id }}_flag.txt</code></div>
+  </div>
+
+  {# ── csrf ──────────────────────────────────────────────────────────────── #}
+  {% elif ch.vuln_type == 'csrf' %}
+  <div class="ch-section">
+    <h3>// Victim Account</h3>
+    {% if changed %}<div class="alert alert-success">✓ Email changed!</div>{% endif %}
+    {% if victim %}
+    <table><tr><th>Username</th><td>{{ victim.username }}</td></tr>
+      <tr><th>Email</th><td>{{ victim.email }}</td></tr></table>
+    {% endif %}
+    {% if flag %}
+    <div class="alert alert-success" style="margin-top:14px">
+      🎉 CSRF succeeded! Flag: <strong>{{ flag }}</strong>
+    </div>
+    {% endif %}
+    <form method="POST" action="/challenges/d/{{ ch.id }}/reset_csrf" style="margin-top:12px">
+      <button type="submit" class="btn btn-danger btn-sm">Reset victim email</button>
+    </form>
+  </div>
+  <div class="ch-section">
+    <h3>// CSRF Simulator</h3>
+    <div class="form-group"><label>New Email</label>
+      <div class="input-row">
+        <input type="email" id="csrf-email-input" placeholder="attacker@evil.com">
+        <button class="btn btn-danger"
+          onclick="simulateDynCsrf('/challenges/d/{{ ch.id }}/change_email')">Send CSRF</button>
+      </div>
+    </div>
+  </div>
+  <div class="ch-section"><h3>// Hints</h3>
+    <button class="hint-toggle" onclick="toggleHint('h1')">▶ Hint 1</button>
+    <div class="hint-box" id="h1">POST to <code>/challenges/d/{{ ch.id }}/change_email</code>
+      with an <code>email</code> field — no token required.</div>
+  </div>
+  {% endif %}
+
+  <!-- Flag submit -->
+  {% if session.username %}
+  <div class="ch-section" data-challenge="{{ ch.id }}">
+    <h3>// Submit Flag</h3>
+    <div class="flag-row">
+      <input type="text" id="flag-input" placeholder="FLAG{...}">
+      <button id="flag-btn" class="btn btn-primary"
+              onclick="submitFlag('{{ ch.id }}')">Submit</button>
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-warning">
+    <a href="/login" style="color:inherit">Login</a> to submit a flag.
+  </div>
+  {% endif %}
+
+</div>
+
+{% if ch.vuln_type == 'xss_stored' %}
+<script>
+function runDynBot(cid) {
+  const out = document.getElementById('bot-output');
+  if (out) { out.textContent = '[ Bot visiting… ]'; out.style.color = '#888'; }
+  fetch('/challenges/d/' + cid + '/bot')
+    .then(r => r.json())
+    .then(d => {
+      if (out) {
+        out.style.color = d.xss_triggered ? 'var(--green)' : 'var(--red)';
+        out.textContent = d.message;
+      }
+    })
+    .catch(() => { if (out) out.textContent = 'Error contacting bot.'; });
+}
+</script>
+{% endif %}
+
+{% if ch.vuln_type == 'csrf' %}
+<script>
+function simulateDynCsrf(endpoint) {
+  const el = document.getElementById('csrf-email-input');
+  if (!el || !el.value.trim()) { showToast('Enter an email.', 'error'); return; }
+  const form = document.createElement('form');
+  form.method = 'POST'; form.action = endpoint;
+  const inp = document.createElement('input');
+  inp.type = 'hidden'; inp.name = 'email'; inp.value = el.value.trim();
+  form.appendChild(inp); document.body.appendChild(form); form.submit();
+}
+</script>
+{% endif %}
+{% endblock %}

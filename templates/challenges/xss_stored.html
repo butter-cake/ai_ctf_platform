@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+{% block title %}Stored XSS — VulnLab{% endblock %}
+{% block content %}
+<a class="back-link" href="/">← Back to Challenges</a>
+<div class="challenge-page" data-challenge="xss_stored">
+
+  <div class="ch-header">
+    <h2>{{ challenge.name }}</h2>
+    <div class="ch-meta">
+      <span class="badge badge-medium">Medium</span>
+      <span class="badge badge-points">{{ challenge.points }} pts</span>
+      <span class="badge badge-cat">{{ challenge.category }}</span>
+    </div>
+    <p class="ch-desc">
+      Comments are stored and rendered <strong>without escaping</strong>.
+      An admin bot periodically visits this page. Its <code>user_session</code> cookie contains the flag.
+      Post a payload that would steal the cookie, then click <em>Simulate Admin Visit</em>.
+    </p>
+  </div>
+
+  <div class="ch-section">
+    <h3>📝 Post a Comment</h3>
+    <form method="POST">
+      <div class="form-group">
+        <label>Author</label>
+        <input type="text" name="author" placeholder="Anonymous">
+      </div>
+      <div class="form-group">
+        <label>Comment</label>
+        <textarea name="comment" placeholder="Share your thoughts…"></textarea>
+      </div>
+      <button type="submit" class="btn btn-primary">Post Comment</button>
+    </form>
+  </div>
+
+  <div class="ch-section">
+    <h3>💬 Comments</h3>
+    {% for c in comments %}
+    <div class="comment">
+      <div class="comment-author">{{ c.author }} — <small class="text-dim">{{ c.created_at }}</small></div>
+      <div class="comment-body">{{ c.comment | safe }}</div>
+    </div>
+    {% else %}
+    <p class="text-dim">No comments yet.</p>
+    {% endfor %}
+  </div>
+
+  <div class="ch-section">
+    <h3>🤖 Admin Bot Simulator</h3>
+    <p class="text-dim" style="font-size:.85rem;margin-bottom:12px">
+      Click below to simulate the admin bot visiting this page.
+      If a valid XSS payload is stored in the comments, the bot's cookie will be "stolen".
+    </p>
+    <button class="btn btn-warning" onclick="runBot()">Simulate Admin Visit</button>
+    <div class="terminal mt-10" id="bot-output">[ Waiting for bot… ]</div>
+  </div>
+
+  <div class="ch-section">
+    <h3>💡 Hints</h3>
+    <button class="hint-toggle" onclick="toggleHint('h1')">▶ Hint 1</button>
+    <div class="hint-box" id="h1">Post a comment containing a <code>&lt;script&gt;</code> tag.
+    Comments are displayed to every visitor, including the admin.</div>
+
+    <button class="hint-toggle mt-10" onclick="toggleHint('h2')">▶ Hint 2</button>
+    <div class="hint-box" id="h2">A classic cookie-theft payload sends <code>document.cookie</code>
+    to an attacker-controlled server. Here the bot simulator detects the payload and reveals the stolen value.</div>
+
+    <button class="hint-toggle mt-10" onclick="toggleHint('h3')">▶ Hint 3 (spoiler)</button>
+    <div class="hint-box" id="h3">
+      Post comment: <code class="text-red">&lt;script&gt;document.location='/?c='+document.cookie&lt;/script&gt;</code><br>
+      Then click <em>Simulate Admin Visit</em>.
+    </div>
+  </div>
+
+  {% if session.username %}
+  <div class="ch-section" data-challenge="xss_stored">
+    <h3>🚩 Submit Flag</h3>
+    <div class="flag-row">
+      <input type="text" id="flag-input" placeholder="FLAG{...}">
+      <button id="flag-btn" class="btn btn-primary" onclick="submitFlag('xss_stored')">Submit</button>
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-warning"><a href="/login" style="color:inherit">Login</a> to submit a flag.</div>
+  {% endif %}
+
+</div>
+{% endblock %}

@@ -1,0 +1,87 @@
+{% extends 'base.html' %}
+{% block title %}Command Injection — VulnLab{% endblock %}
+{% block content %}
+<a class="back-link" href="/">← Back to Challenges</a>
+<div class="challenge-page" data-challenge="cmdi">
+
+  <div class="ch-header">
+    <h2>{{ challenge.name }}</h2>
+    <div class="ch-meta">
+      <span class="badge badge-easy">Easy</span>
+      <span class="badge badge-points">{{ challenge.points }} pts</span>
+      <span class="badge badge-cat">{{ challenge.category }}</span>
+    </div>
+    <p class="ch-desc">
+      The ping utility passes user input directly to the OS shell with <code>shell=True</code>.
+      Inject additional commands to read <code>ctf_flag_cmdi.txt</code> from the server.
+    </p>
+  </div>
+
+  <div class="ch-section">
+    <h3>🌐 Network Ping Tool</h3>
+    <form method="POST">
+      <div class="form-group">
+        <label>Target Host / IP</label>
+        <div class="input-row">
+          <input type="text" name="target" value="{{ request.form.get('target','') }}"
+                 placeholder="127.0.0.1" autofocus>
+          <button type="submit" class="btn btn-primary">Ping</button>
+        </div>
+      </div>
+    </form>
+
+    {% if command %}
+    <div style="margin-top:12px">
+      <div class="text-dim" style="font-size:.8rem;margin-bottom:4px">Command executed:</div>
+      <div class="code-block">{{ command }}</div>
+    </div>
+    {% endif %}
+
+    {% if output is not none %}
+    <div style="margin-top:12px">
+      <div class="text-dim" style="font-size:.8rem;margin-bottom:4px">Output:</div>
+      <div class="terminal">{{ output }}</div>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="ch-section">
+    <h3>🔍 Vulnerable Code</h3>
+    <div class="code-block">target = request.form.get('target', '')
+command = f'ping -n 1 <span class="code-hl">{target}</span>'
+<span class="code-hl"># ⚠ shell=True — user input is executed by the OS shell!</span>
+subprocess.run(command, shell=True, ...)</div>
+  </div>
+
+  <div class="ch-section">
+    <h3>💡 Hints</h3>
+    <button class="hint-toggle" onclick="toggleHint('h1')">▶ Hint 1</button>
+    <div class="hint-box" id="h1">On Windows, <code>&amp;</code> or <code>&amp;&amp;</code> chains
+    commands. On Linux, use <code>;</code> or <code>&amp;&amp;</code>.</div>
+
+    <button class="hint-toggle mt-10" onclick="toggleHint('h2')">▶ Hint 2</button>
+    <div class="hint-box" id="h2">The flag file is named <code>ctf_flag_cmdi.txt</code> in the
+    application's working directory. Read it with <code>type</code> (Windows) or
+    <code>cat</code> (Linux).</div>
+
+    <button class="hint-toggle mt-10" onclick="toggleHint('h3')">▶ Hint 3 (spoiler)</button>
+    <div class="hint-box" id="h3">
+      Windows: <code class="text-red">127.0.0.1 &amp; type ctf_flag_cmdi.txt</code><br>
+      Linux:   <code class="text-red">127.0.0.1; cat ctf_flag_cmdi.txt</code>
+    </div>
+  </div>
+
+  {% if session.username %}
+  <div class="ch-section" data-challenge="cmdi">
+    <h3>🚩 Submit Flag</h3>
+    <div class="flag-row">
+      <input type="text" id="flag-input" placeholder="FLAG{...}">
+      <button id="flag-btn" class="btn btn-primary" onclick="submitFlag('cmdi')">Submit</button>
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-warning"><a href="/login" style="color:inherit">Login</a> to submit a flag.</div>
+  {% endif %}
+
+</div>
+{% endblock %}

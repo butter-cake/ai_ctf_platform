@@ -1,0 +1,153 @@
+{% extends 'base.html' %}
+{% block title %}{{ profile_user.username }} — VulnLab{% endblock %}
+{% block content %}
+<a class="back-link" href="/scoreboard">← Back to Scoreboard</a>
+
+<!-- Profile header -->
+<div class="ch-header" style="margin-bottom:18px">
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+    <div class="profile-avatar">{{ profile_user.username[0] | upper }}</div>
+    <div>
+      <h2 style="margin-bottom:6px">{{ profile_user.username }}</h2>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <span class="badge badge-points">{{ profile_user.score }} pts</span>
+        <span class="badge badge-cat">Rank #{{ rank }}</span>
+        <span class="badge badge-easy">{{ solved_challenges | length }}/{{ total }} solved</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="profile-stats">
+    <div class="stat">
+      <div class="stat-val">{{ profile_user.score }}</div>
+      <div class="stat-lbl">Total Points</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val">{{ solved_challenges | length }}</div>
+      <div class="stat-lbl">Challenges Solved</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val">#{{ rank }}</div>
+      <div class="stat-lbl">Rank</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val">{{ unsolved_challenges | length }}</div>
+      <div class="stat-lbl">Remaining</div>
+    </div>
+    {% if total_solve_time %}
+    <div class="stat">
+      <div class="stat-val">{{ total_solve_time }}</div>
+      <div class="stat-lbl">Total Solve Time</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Solved challenges -->
+{% if solved_challenges %}
+<div class="ch-section">
+  <h3>✓ Solved Challenges</h3>
+  {% for ch in solved_challenges %}
+  <div class="profile-challenge solved-entry">
+    <div class="profile-ch-header">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span class="text-green" style="font-weight:700">{{ ch.name }}</span>
+        <span class="badge badge-cat">{{ ch.category }}</span>
+        <span class="badge badge-{{ ch.difficulty | lower }}">{{ ch.difficulty }}</span>
+        <span class="badge badge-points">+{{ ch.points }} pts</span>
+        {% set model_names = {
+          'claude-haiku-4-5-20251001': 'Haiku 4.5',
+          'claude-sonnet-4-6': 'Sonnet 4.6',
+          'claude-opus-4-8': 'Opus 4.8',
+          'claude-3-5-haiku-20241022': 'Haiku 3.5',
+          'claude-3-5-sonnet-20241022': 'Sonnet 3.5',
+          'claude-3-opus-20240229': 'Opus 3'
+        } %}
+        {% if ch.solver_model %}
+        <span class="badge" style="background:#0a0a1a;color:#b060ff;border:1px solid #5a2a99;font-size:.6rem">
+          ✦ AI · {{ model_names.get(ch.solver_model, ch.solver_model) }}
+        </span>
+        {% else %}
+        <span class="badge" style="background:#0a1a0a;color:#00cc44;border:1px solid #1a4a1a;font-size:.6rem">
+          ✓ Human
+        </span>
+        {% endif %}
+      </div>
+      <span class="profile-ts">
+        solved {{ ch.solved_at }}
+        {% if ch.solve_time %} · <span style="color:var(--yellow)">⏱ {{ ch.solve_time }}</span>{% endif %}
+      </span>
+    </div>
+
+    {% if ch.activity %}
+    <div class="profile-activity">
+      <div class="profile-activity-label">&gt;_ activity log</div>
+      {% for entry in ch.activity %}
+      <div class="profile-activity-row activity-{{ entry.status }}">
+        <span class="profile-activity-ts">{{ entry.ts }}</span>
+        <span class="profile-activity-detail">{{ entry.detail }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="profile-activity">
+      <span class="text-dim" style="font-size:.8rem">No activity logged for this challenge.</span>
+    </div>
+    {% endif %}
+
+    <div style="margin-top:10px">
+      <button class="btn btn-sm btn-warning analyze-btn"
+              data-username="{{ profile_user.username }}"
+              data-challenge="{{ ch.id }}">
+        &gt;_ AI Post-Mortem
+      </button>
+    </div>
+    <div class="analysis-panel" id="analysis-{{ ch.id }}" style="display:none"></div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Unsolved challenges -->
+{% if unsolved_challenges %}
+<div class="ch-section">
+  <h3>✗ Not Yet Solved</h3>
+  <div style="display:flex;flex-direction:column;gap:10px">
+    {% for ch in unsolved_challenges %}
+    <div class="profile-challenge unsolved-entry">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span class="text-dim" style="font-weight:700">{{ ch.name }}</span>
+        <span class="badge badge-cat">{{ ch.category }}</span>
+        <span class="badge badge-{{ ch.difficulty | lower }}">{{ ch.difficulty }}</span>
+        <span class="badge badge-points">{{ ch.points }} pts</span>
+      </div>
+      {% if ch.activity %}
+      <div class="profile-activity" style="margin-top:8px">
+        <div class="profile-activity-label">&gt;_ attempted ({{ ch.activity | length }} action{{ 's' if ch.activity | length != 1 }})</div>
+        {% for entry in ch.activity[:3] %}
+        <div class="profile-activity-row activity-{{ entry.status }}">
+          <span class="profile-activity-ts">{{ entry.ts }}</span>
+          <span class="profile-activity-detail">{{ entry.detail }}</span>
+        </div>
+        {% endfor %}
+        {% if ch.activity | length > 3 %}
+        <div class="text-dim" style="font-size:.78rem;margin-top:4px">… and {{ ch.activity | length - 3 }} more</div>
+        {% endif %}
+      </div>
+      <div style="margin-top:10px">
+        <button class="btn btn-sm btn-warning analyze-btn"
+                data-username="{{ profile_user.username }}"
+                data-challenge="{{ ch.id }}">
+          &gt;_ AI Post-Mortem
+        </button>
+      </div>
+      <div class="analysis-panel" id="analysis-{{ ch.id }}" style="display:none"></div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<script src="{{ url_for('static', filename='js/profile.js') }}"></script>
+{% endblock %}

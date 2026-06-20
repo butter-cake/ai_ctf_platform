@@ -1,0 +1,9 @@
+Welcome to VulnLab File Browser!
+================================
+
+Available files:
+  - welcome.txt  (you are here)
+  - about.txt
+  - readme.txt
+
+Try reading them with ?file=about.txt

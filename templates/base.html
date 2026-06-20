@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% block title %}VulnLab CTF{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<nav class="navbar">
+  <a class="nav-brand" href="/"><span>[</span>VulnLab<span>]</span></a>
+  <div class="nav-links">
+    <a href="/">Challenges</a>
+    <a href="/scoreboard">Scoreboard</a>
+    {% if session.username %}
+      <span class="nav-user">👾 {{ session.username }}</span>
+      <span class="nav-score">{{ score if score is defined else '' }}</span>
+      <a href="/logout">Logout</a>
+    {% else %}
+      <a href="/login">Login</a>
+      <a href="/register">Register</a>
+    {% endif %}
+  </div>
+</nav>
+
+<main>
+  {% block content %}{% endblock %}
+</main>
+
+<div id="toast"></div>
+
+<!-- ── Side chat panel (Grok) ─────────────────────────────────────────────── -->
+<button id="chat-toggle" aria-label="Open assistant" title="Ask the assistant">&gt;_</button>
+<aside id="chat-panel" aria-hidden="true">
+  <header class="chat-header">
+    <span class="chat-title">&gt;_ VulnLab Assistant</span>
+    <select id="chat-model-select" class="chat-model-select" title="Choose model">
+      <optgroup label="Claude 4">
+        <option value="claude-haiku-4-5-20251001">Haiku 4.5</option>
+        <option value="claude-sonnet-4-6">Sonnet 4.6</option>
+        <option value="claude-opus-4-8">Opus 4.8</option>
+      </optgroup>
+      <optgroup label="Claude 3.5">
+        <option value="claude-3-5-haiku-20241022">Haiku 3.5</option>
+        <option value="claude-3-5-sonnet-20241022">Sonnet 3.5</option>
+      </optgroup>
+      <optgroup label="Claude 3">
+        <option value="claude-3-opus-20240229">Opus 3</option>
+      </optgroup>
+    </select>
+    <button id="chat-mode-btn" class="chat-mode-btn" data-mode="chat" title="Toggle reasoning mode">chat</button>
+    <button id="chat-close" aria-label="Close assistant">&times;</button>
+  </header>
+  <div id="chat-messages" class="chat-messages">
+    <div class="chat-msg assistant">
+      Hi! I'm your security tutor. Ask me about any challenge — SQLi, XSS, CSRF,
+      command injection, path traversal — and I'll point you in the right direction.
+    </div>
+  </div>
+  <form id="chat-form" class="chat-input-row" autocomplete="off">
+    <input id="chat-input" type="text" placeholder="Ask about a challenge…" />
+    <button id="chat-send" class="btn btn-primary btn-sm" type="submit">Send</button>
+  </form>
+</aside>
+
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+</body>
+</html>

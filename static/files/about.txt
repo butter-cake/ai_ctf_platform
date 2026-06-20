@@ -1,0 +1,4 @@
+VulnLab File Server v1.0
+------------------------
+This service lets you read files from the /static/files directory.
+Or does it...?

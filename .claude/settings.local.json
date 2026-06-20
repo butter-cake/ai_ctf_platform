@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip3 install *)",
+      "Bash(python3 -c \"import app; print\\('app imports OK; model =', app.CHAT_MODEL, '| key set:', bool\\(app.CHAT_API_KEY\\)\\)\")",
+      "Bash(cd *)",
+      "Bash(python3 app.py)",
+      "Bash(echo \"Server PID: $!\")",
+      "Bash(python3 *)",
+      "Bash(curl *)"
+    ]
+  }
+}
