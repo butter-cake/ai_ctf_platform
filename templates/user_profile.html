@@ -58,11 +58,13 @@
         {% set model_names = {
           'claude-haiku-4-5-20251001': 'Haiku 4.5',
           'claude-sonnet-4-6': 'Sonnet 4.6',
-          'claude-opus-4-8': 'Opus 4.8',
-          'claude-3-5-haiku-20241022': 'Haiku 3.5',
-          'claude-3-5-sonnet-20241022': 'Sonnet 3.5',
-          'claude-3-opus-20240229': 'Opus 3'
+          'claude-opus-4-8': 'Opus 4.8'
         } %}
+        {% if ch.dynamic %}
+        <span class="badge" style="background:#0a0a14;color:#b060ff;border:1px solid #5a2a99;font-size:.6rem">
+          ✦ AI-Generated{% if ch.creator_model %} · {{ model_names.get(ch.creator_model, ch.creator_model) }}{% endif %}
+        </span>
+        {% endif %}
         {% if ch.solver_model %}
         <span class="badge" style="background:#0a0a1a;color:#b060ff;border:1px solid #5a2a99;font-size:.6rem">
           ✦ AI · {{ model_names.get(ch.solver_model, ch.solver_model) }}

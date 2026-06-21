@@ -22,7 +22,19 @@
         {% for u in users %}
         <tr class="{% if loop.index == 1 %}rank-gold{% elif loop.index == 2 %}rank-silver{% elif loop.index == 3 %}rank-bronze{% endif %}">
           <td>{{ loop.index }}</td>
-          <td><a href="/user/{{ u.username }}" class="profile-link">{{ u.username }}</a></td>
+          <td>
+            <a href="/user/{{ u.username }}" class="profile-link">{{ u.username }}</a>
+            {% set model_names = {
+              'claude-haiku-4-5-20251001': 'Haiku 4.5',
+              'claude-sonnet-4-6': 'Sonnet 4.6',
+              'claude-opus-4-8': 'Opus 4.8'
+            } %}
+            {% for m in u.models_used %}
+            <span class="badge" style="background:#0a0a1a;color:#b060ff;border:1px solid #5a2a99;font-size:.58rem;vertical-align:middle;margin-left:4px">
+              ✦ {{ model_names.get(m, m) }}
+            </span>
+            {% endfor %}
+          </td>
           <td>{{ u.solved_count }}</td>
           <td>{{ u.score }} pts</td>
           <td style="color:var(--yellow)">{{ u.total_solve_time or '—' }}</td>

@@ -7,7 +7,8 @@
       "Bash(python3 app.py)",
       "Bash(echo \"Server PID: $!\")",
       "Bash(python3 *)",
-      "Bash(curl *)"
+      "Bash(curl *)",
+      "Bash(sqlite3 *)"
     ]
   }
 }

@@ -18,9 +18,10 @@ import secrets
 import requests
 from dotenv import dotenv_values
 from functools import wraps
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-app.secret_key = 'vulnlab_ctf_secret_key_change_in_prod'
+app.secret_key = os.environ.get('FLASK_SECRET_KEY') or secrets.token_hex(32)
 
 DATABASE = os.path.join(os.path.dirname(__file__), 'ctf.db')
 
@@ -36,16 +37,8 @@ CHAT_ALLOWED_MODELS = {
     'claude-haiku-4-5-20251001',
     'claude-sonnet-4-6',
     'claude-opus-4-8',
-    'claude-3-5-sonnet-20241022',
-    'claude-3-5-haiku-20241022',
-    'claude-3-opus-20240229',
 }
-# Extended thinking is only supported on Claude 4.x models
-THINKING_MODELS = {
-    'claude-haiku-4-5-20251001',
-    'claude-sonnet-4-6',
-    'claude-opus-4-8',
-}
+THINKING_MODELS = CHAT_ALLOWED_MODELS
 
 AGENT_TOOLS = [
     {
@@ -219,12 +212,18 @@ CHAT_SYSTEM_PROMPT = (
     "  login            — authenticate as an existing user account\n"
     "  list_challenges  — enumerate all challenges and the active user's solve status\n"
     "  solve_challenge  — run the exploit for a challenge and retrieve its flag\n"
-    "  submit_flag      — submit the flag on behalf of the active user to award points\n"
-    "When asked to 'log in and solve' or 'solve as an agent': call create_bot_user first "
-    "(bot_name='VulnSniff') to establish an identity, then list_challenges, then loop "
-    "solve_challenge + submit_flag for each unsolved challenge. "
-    "After finishing, summarise what was solved, total points earned, and a one-line exploit "
-    "note for each challenge. "
+    "  submit_flag      — submit the flag on behalf of the active user to award points\n\n"
+    "## Tool call rules — CRITICAL\n"
+    "1. Call EXACTLY ONE tool per response. Never include two tool_use blocks in the same reply.\n"
+    "2. Solve challenges SEQUENTIALLY, one at a time. The required order per challenge is:\n"
+    "   a. Call solve_challenge for challenge N — then STOP and wait for the result.\n"
+    "   b. In the next response, call submit_flag for challenge N — then STOP and wait.\n"
+    "   c. Only after submit_flag succeeds, move on to challenge N+1.\n"
+    "   Never call solve_challenge for a second challenge before submitting the flag for the first.\n"
+    "3. When asked to 'log in and solve' or 'solve as an agent': call create_bot_user first "
+    "(bot_name='VulnSniff'), then list_challenges, then follow the sequential loop above.\n"
+    "4. After all challenges are done, produce a summary: what was solved, total points, "
+    "and a one-line exploit note per challenge.\n"
     "If the human user is already logged in (user_id provided in context), prefer submitting "
     "under their account unless they explicitly ask you to use a bot account. "
     "Never narrate raw tool calls or JSON — only show the final results and explanations."
@@ -413,7 +412,7 @@ def register():
         password = request.form.get('password', '')
         if not username or not password:
             return render_template('register.html', error='All fields are required.')
-        pw_hash = hashlib.sha256(password.encode()).hexdigest()
+        pw_hash = generate_password_hash(password)
         db = get_db()
         try:
             db.execute('INSERT INTO users (username, password, score) VALUES (?, ?, 0)',
@@ -431,12 +430,11 @@ def login():
     if request.method == 'POST':
         username = request.form.get('username', '')
         password = request.form.get('password', '')
-        pw_hash = hashlib.sha256(password.encode()).hexdigest()
         db = get_db()
-        user = db.execute('SELECT * FROM users WHERE username = ? AND password = ?',
-                          [username, pw_hash]).fetchone()
+        user = db.execute('SELECT * FROM users WHERE username = ?',
+                          [username]).fetchone()
         db.close()
-        if user:
+        if user and check_password_hash(user['password'], password):
             session['user_id'] = user['id']
             session['username'] = user['username']
             return redirect(url_for('index'))
@@ -455,7 +453,8 @@ def scoreboard():
         SELECT u.username, u.score, COUNT(s.id) AS solved_count,
                SUM(CASE WHEN s.started_at != '' AND s.solved_at IS NOT NULL
                         THEN (julianday(s.solved_at) - julianday(s.started_at)) * 86400.0
-                        ELSE NULL END) AS total_seconds
+                        ELSE NULL END) AS total_seconds,
+               GROUP_CONCAT(DISTINCT CASE WHEN s.solver_model != '' THEN s.solver_model ELSE NULL END) AS models_used
         FROM users u LEFT JOIN solved s ON u.id = s.user_id
         GROUP BY u.id
         ORDER BY u.score DESC, total_seconds ASC
@@ -467,6 +466,8 @@ def scoreboard():
         u = dict(r)
         secs = u.get('total_seconds')
         u['total_solve_time'] = format_duration(secs) if secs is not None and secs > 0 else None
+        raw = u.get('models_used') or ''
+        u['models_used'] = [m for m in raw.split(',') if m] if raw else []
         users.append(u)
     return render_template('scoreboard.html', users=users)
 
@@ -572,7 +573,7 @@ def agent_solve_challenge(challenge_id):
     return {'error': f'Challenge "{challenge_id}" not found. Use list_challenges to see valid ids.'}
 
 
-def agent_submit_flag(challenge_id, flag, user_id, solver_model='', started_at=''):
+def agent_submit_flag(challenge_id, flag, user_id, solver_model='', started_at='', solved_at=''):
     if not user_id:
         return {'error': 'No user is currently logged in — cannot award points.'}
     if challenge_id in CHALLENGES:
@@ -594,8 +595,10 @@ def agent_submit_flag(challenge_id, flag, user_id, solver_model='', started_at='
                   [user_id, challenge_id]).fetchone():
         db.close()
         return {'already_solved': True, 'message': f'"{name}" was already solved — no duplicate points.'}
-    db.execute('INSERT INTO solved (user_id, challenge_id, solver_model, started_at) VALUES (?, ?, ?, ?)',
-               [user_id, challenge_id, solver_model, started_at])
+    explicit_solved_at = solved_at or datetime.utcnow().isoformat()
+    db.execute(
+        'INSERT INTO solved (user_id, challenge_id, solver_model, started_at, solved_at) VALUES (?, ?, ?, ?, ?)',
+        [user_id, challenge_id, solver_model, started_at, explicit_solved_at])
     db.execute('UPDATE users SET score = score + ? WHERE id = ?', [points, user_id])
     db.execute('INSERT INTO activity (user_id, challenge_id, detail) VALUES (?,?,?)',
                [user_id, challenge_id, f'Flag captured via AI agent: {flag}'[:500]])
@@ -616,7 +619,7 @@ def agent_create_bot_user(bot_name='VulnSniff'):
             'username': existing['username'], 'score': existing['score'],
             'message': f'Using existing bot account "{safe_name}" ({existing["score"]} pts)',
         }
-    pw_hash = hashlib.sha256(secrets.token_hex(16).encode()).hexdigest()
+    pw_hash = generate_password_hash(secrets.token_hex(16))
     try:
         db.execute('INSERT INTO users (username, password, score) VALUES (?, ?, 0)',
                    [safe_name, pw_hash])
@@ -633,13 +636,12 @@ def agent_create_bot_user(bot_name='VulnSniff'):
 def agent_login(username, password):
     if not username or not password:
         return {'error': 'username and password are required'}
-    pw_hash = hashlib.sha256(password.encode()).hexdigest()
     db = get_db()
     user = db.execute(
-        'SELECT id, username, score FROM users WHERE username = ? AND password = ?',
-        [username, pw_hash]).fetchone()
+        'SELECT id, username, score, password FROM users WHERE username = ?',
+        [username]).fetchone()
     db.close()
-    if not user:
+    if not user or not check_password_hash(user['password'], password):
         return {'error': f'Invalid credentials for "{username}"'}
     return {'success': True, 'user_id': user['id'], 'username': user['username'],
             'score': user['score'],
@@ -662,17 +664,21 @@ def agent_execute_tool(name, tool_input, ctx):
     if name == 'list_challenges':
         return agent_list_challenges(uid)
     if name == 'solve_challenge':
-        ctx['started_at'] = datetime.utcnow().isoformat()
-        return agent_solve_challenge(tool_input.get('challenge_id', ''))
+        cid = tool_input.get('challenge_id', '')
+        ctx.setdefault('challenge_start_times', {})[cid] = datetime.utcnow().isoformat()
+        return agent_solve_challenge(cid)
     if name == 'submit_flag':
-        return agent_submit_flag(tool_input.get('challenge_id', ''),
-                                 tool_input.get('flag', ''), ctx.get('user_id'),
-                                 ctx.get('model', ''), ctx.get('started_at', ''))
+        cid = tool_input.get('challenge_id', '')
+        started_at = ctx.get('challenge_start_times', {}).get(cid, '')
+        solved_at  = datetime.utcnow().isoformat()
+        return agent_submit_flag(cid, tool_input.get('flag', ''), ctx.get('user_id'),
+                                 ctx.get('model', ''), started_at, solved_at)
     return {'error': f'Unknown tool: {name}'}
 
 
 # ── Side chat panel (Anthropic) ───────────────────────────────────────────────
 @app.route('/api/chat', methods=['POST'])
+@login_required
 def api_chat():
     if not CHAT_API_KEY:
         return jsonify({'error': 'Chat is not configured. Add ANTHROPIC_API_KEY to the '
@@ -708,11 +714,11 @@ def api_chat():
         'Content-Type': 'application/json',
     }
     loop_messages = list(messages)
-    final_reply = ''
-    agent_ctx = {'user_id': user_id, 'model': model, 'started_at': datetime.utcnow().isoformat()}
+    reply_parts = []
+    agent_ctx = {'user_id': user_id, 'model': model, 'challenge_start_times': {}}
 
     try:
-        for _turn in range(30):
+        for _turn in range(40):
             body = {
                 'model': model,
                 'max_tokens': 10000 if mode == 'reasoning' else 2048,
@@ -730,8 +736,10 @@ def api_chat():
             content = data.get('content', [])
             stop_reason = data.get('stop_reason')
 
-            # Collect text from this turn
-            final_reply = ''.join(b['text'] for b in content if b.get('type') == 'text')
+            # Accumulate text from every turn so all status updates are preserved
+            turn_text = ''.join(b['text'] for b in content if b.get('type') == 'text')
+            if turn_text.strip():
+                reply_parts.append(turn_text.strip())
 
             if stop_reason != 'tool_use':
                 break
@@ -749,7 +757,7 @@ def api_chat():
                     })
             loop_messages.append({'role': 'user', 'content': tool_results})
 
-        return jsonify({'reply': final_reply, 'model': model, 'mode': mode})
+        return jsonify({'reply': '\n\n'.join(reply_parts), 'model': model, 'mode': mode})
     except requests.exceptions.RequestException as e:
         return jsonify({'error': f'Could not reach the model: {e}'}), 502
     except (KeyError, IndexError, ValueError) as e:
@@ -944,6 +952,7 @@ VALID_DIFFICULTIES = {'Easy','Medium','Hard'}
 APP_DIR = os.path.dirname(__file__)
 
 @app.route('/api/add_challenge', methods=['POST'])
+@login_required
 def api_add_challenge():
     data = request.get_json(silent=True) or {}
     name        = str(data.get('name', '')).strip()[:100]
@@ -1221,6 +1230,7 @@ with open(filepath, \'r\') as f:
 
 # ── AI post-mortem analysis ───────────────────────────────────────────────────
 @app.route('/api/analyze', methods=['POST'])
+@login_required
 def api_analyze():
     if not CHAT_API_KEY:
         return jsonify({'error': 'AI analysis not configured. Add ANTHROPIC_API_KEY to .env.'}), 503
@@ -1365,6 +1375,9 @@ def user_profile(username):
     ).fetchone()
     rank = rank_row['r'] + 1
 
+    dyn_rows = db.execute('SELECT * FROM dynamic_challenges ORDER BY created_at ASC').fetchall()
+    dynamic_challenges = [dict(r) for r in dyn_rows]
+
     db.close()
 
     # Group activity by challenge (ascending so we can index correctly)
@@ -1395,15 +1408,12 @@ def user_profile(username):
             else:
                 e['status'] = 'incorrect'
 
-    solved_challenges = []
-    unsolved_challenges = []
-    for cid, ch in CHALLENGES.items():
+    def _build_entry(cid, ch):
         entry = dict(ch, id=cid)
         if cid in solved_ids:
             entry['solved_at'] = solved_map[cid]
             entry['solver_model'] = solver_model_map.get(cid, '')
             entry['activity'] = activity_by_challenge.get(cid, [])
-            # Compute time-to-solve: started_at (stored at solve time) → solved_at
             solve_seconds = None
             start_ts = started_at_map.get(cid, '')
             end_ts = solved_map[cid]
@@ -1415,10 +1425,31 @@ def user_profile(username):
                     pass
             entry['solve_seconds'] = solve_seconds
             entry['solve_time'] = format_duration(solve_seconds) if solve_seconds is not None else None
-            solved_challenges.append(entry)
+            return 'solved', entry
         else:
             entry['activity'] = activity_by_challenge.get(cid, [])
-            unsolved_challenges.append(entry)
+            return 'unsolved', entry
+
+    solved_challenges = []
+    unsolved_challenges = []
+
+    for cid, ch in CHALLENGES.items():
+        bucket, entry = _build_entry(cid, ch)
+        (solved_challenges if bucket == 'solved' else unsolved_challenges).append(entry)
+
+    for dch in dynamic_challenges:
+        cid = dch['id']
+        ch = {
+            'name': dch['name'],
+            'points': dch['points'],
+            'difficulty': dch['difficulty'],
+            'category': dch['category'],
+            'desc': dch.get('description', ''),
+            'dynamic': True,
+            'creator_model': dch.get('model', ''),
+        }
+        bucket, entry = _build_entry(cid, ch)
+        (solved_challenges if bucket == 'solved' else unsolved_challenges).append(entry)
 
     solved_challenges.sort(key=lambda x: x['solved_at'])
 
@@ -1429,7 +1460,7 @@ def user_profile(username):
                            profile_user=user, rank=rank,
                            solved_challenges=solved_challenges,
                            unsolved_challenges=unsolved_challenges,
-                           total=len(CHALLENGES),
+                           total=len(CHALLENGES) + len(dynamic_challenges),
                            total_solve_time=total_solve_time)
 
 if __name__ == '__main__':
