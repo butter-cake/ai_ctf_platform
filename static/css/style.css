@@ -502,6 +502,9 @@ tr:hover td { background: #101018; }
   color: #a8d8a8; font-size: .8rem; line-height: 1.5;
 }
 .chat-msg.typing { color: var(--text-dim); font-style: italic; }
+.chat-status-list { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; }
+.chat-status-item { font-size: .75rem; color: var(--text-dim); font-style: normal; padding: 1px 0; }
+.chat-status-item.solved { color: var(--green); }
 .chat-msg.refresh-notice { color: var(--green); border-color: var(--green);
   font-size: .8rem; opacity: .85; }
 

@@ -77,7 +77,19 @@
     input.disabled = true;
     sendBtn.disabled = true;
 
+    // Typing bubble with a live status list inside
     const typing = addMessage('assistant typing', 'thinking…');
+    const statusList = document.createElement('div');
+    statusList.className = 'chat-status-list';
+    typing.appendChild(statusList);
+
+    function addStatus(text, solved) {
+      const item = document.createElement('div');
+      item.className = 'chat-status-item' + (solved ? ' solved' : '');
+      item.textContent = text;
+      statusList.appendChild(item);
+      log.scrollTop = log.scrollHeight;
+    }
 
     try {
       const selectedModel = modelSelect ? modelSelect.value : null;
@@ -91,30 +103,62 @@
           page_path: window.location.pathname,
         })
       });
-      const data = await resp.json();
-      typing.remove();
 
-      if (!resp.ok || data.error) {
+      // Validation errors come back as plain JSON (non-200)
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        typing.remove();
         addMessage('error', data.error || 'Something went wrong.');
-      } else {
-        const raw = data.reply;
-        const tagMatch = raw.match(/<create_challenge>([\s\S]*?)<\/create_challenge>/);
-        const displayText = raw.replace(/<create_challenge>[\s\S]*?<\/create_challenge>/g, '').trim();
-        if (displayText) {
-          const msgEl = addMessage('assistant', displayText);
-          if (data.mode === 'reasoning') {
-            const badge = document.createElement('span');
-            badge.className = 'reasoning-badge';
-            badge.textContent = '⚙ reasoning';
-            msgEl.prepend(badge);
-          }
-        }
-        history.push({ role: 'assistant', content: raw });
-        if (tagMatch) {
-          try {
-            showChallengeConfirm(JSON.parse(tagMatch[1].trim()));
-          } catch (e) {
-            addMessage('error', 'AI returned malformed challenge spec — could not parse JSON.');
+        return;
+      }
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+
+      outer: while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop(); // keep incomplete last line
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          let event;
+          try { event = JSON.parse(line.slice(6)); } catch { continue; }
+
+          if (event.type === 'status') {
+            addStatus(event.text, event.solved);
+
+          } else if (event.type === 'error') {
+            typing.remove();
+            addMessage('error', event.error || 'Something went wrong.');
+            break outer;
+
+          } else if (event.type === 'done') {
+            typing.remove();
+            const raw = event.reply || '';
+            const tagMatch = raw.match(/<create_challenge>([\s\S]*?)<\/create_challenge>/);
+            const displayText = raw.replace(/<create_challenge>[\s\S]*?<\/create_challenge>/g, '').trim();
+            if (displayText) {
+              const msgEl = addMessage('assistant', displayText);
+              if (event.mode === 'reasoning') {
+                const badge = document.createElement('span');
+                badge.className = 'reasoning-badge';
+                badge.textContent = '⚙ reasoning';
+                msgEl.prepend(badge);
+              }
+            }
+            history.push({ role: 'assistant', content: raw });
+            if (tagMatch) {
+              try {
+                showChallengeConfirm(JSON.parse(tagMatch[1].trim()));
+              } catch (e) {
+                addMessage('error', 'AI returned malformed challenge spec — could not parse JSON.');
+              }
+            }
+            break outer;
           }
         }
       }

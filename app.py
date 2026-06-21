@@ -6,7 +6,8 @@ All vulnerabilities are intentional for training purposes.
 """
 
 from flask import (Flask, render_template, request, session,
-                   redirect, url_for, make_response, jsonify, abort)
+                   redirect, url_for, make_response, jsonify, abort,
+                   Response, stream_with_context)
 import sqlite3
 import os
 from datetime import datetime
@@ -677,6 +678,15 @@ def agent_execute_tool(name, tool_input, ctx):
 
 
 # ── Side chat panel (Anthropic) ───────────────────────────────────────────────
+def _get_challenge_name(cid):
+    if cid in CHALLENGES:
+        return CHALLENGES[cid]['name']
+    db = get_db()
+    row = db.execute('SELECT name FROM dynamic_challenges WHERE id = ?', [cid]).fetchone()
+    db.close()
+    return row['name'] if row else cid
+
+
 @app.route('/api/chat', methods=['POST'])
 @login_required
 def api_chat():
@@ -684,19 +694,18 @@ def api_chat():
         return jsonify({'error': 'Chat is not configured. Add ANTHROPIC_API_KEY to the '
                                  '.env file and restart the server.'}), 503
 
-    data = request.get_json(silent=True) or {}
-    history = data.get('messages', [])
+    req_data = request.get_json(silent=True) or {}
+    history = req_data.get('messages', [])
     if not isinstance(history, list) or not history:
         return jsonify({'error': 'No messages provided.'}), 400
-    requested_model = data.get('model', '')
+    requested_model = req_data.get('model', '')
     model = requested_model if requested_model in CHAT_ALLOWED_MODELS else CHAT_MODEL
-    mode = data.get('mode', 'chat')
-    page_path = str(data.get('page_path', ''))[:200]
+    mode = req_data.get('mode', 'chat')
+    page_path = str(req_data.get('page_path', ''))[:200]
     user_id = session.get('user_id')
     page_context = build_page_context(page_path, user_id)
     system = CHAT_SYSTEM_PROMPT + page_context
 
-    # Keep only well-formed user/assistant turns, cap length and history depth.
     messages = []
     for m in history[-20:]:
         if not isinstance(m, dict):
@@ -714,54 +723,91 @@ def api_chat():
         'Content-Type': 'application/json',
     }
     loop_messages = list(messages)
-    reply_parts = []
     agent_ctx = {'user_id': user_id, 'model': model, 'challenge_start_times': {}}
 
-    try:
-        for _turn in range(40):
-            body = {
-                'model': model,
-                'max_tokens': 10000 if mode == 'reasoning' else 2048,
-                'system': system,
-                'messages': loop_messages,
-                'tools': AGENT_TOOLS,
-            }
-            if mode == 'reasoning' and model in THINKING_MODELS:
-                body['thinking'] = {'type': 'enabled', 'budget_tokens': 8000}
+    def sse(obj):
+        return f"data: {json.dumps(obj)}\n\n"
 
-            resp = requests.post('https://api.anthropic.com/v1/messages',
-                                 headers=api_headers, json=body, timeout=120)
-            resp.raise_for_status()
-            data = resp.json()
-            content = data.get('content', [])
-            stop_reason = data.get('stop_reason')
+    def generate():
+        reply_parts = []
+        try:
+            for _turn in range(40):
+                body = {
+                    'model': model,
+                    'max_tokens': 10000 if mode == 'reasoning' else 2048,
+                    'system': system,
+                    'messages': loop_messages,
+                    'tools': AGENT_TOOLS,
+                }
+                if mode == 'reasoning' and model in THINKING_MODELS:
+                    body['thinking'] = {'type': 'enabled', 'budget_tokens': 8000}
 
-            # Accumulate text from every turn so all status updates are preserved
-            turn_text = ''.join(b['text'] for b in content if b.get('type') == 'text')
-            if turn_text.strip():
-                reply_parts.append(turn_text.strip())
+                api_resp = requests.post('https://api.anthropic.com/v1/messages',
+                                         headers=api_headers, json=body, timeout=120)
+                api_resp.raise_for_status()
+                rdata = api_resp.json()
+                content = rdata.get('content', [])
+                stop_reason = rdata.get('stop_reason')
 
-            if stop_reason != 'tool_use':
-                break
+                turn_text = ''.join(b['text'] for b in content if b.get('type') == 'text')
+                if turn_text.strip():
+                    reply_parts.append(turn_text.strip())
 
-            # Execute every tool_use block and loop back
-            loop_messages.append({'role': 'assistant', 'content': content})
-            tool_results = []
-            for block in content:
-                if block.get('type') == 'tool_use':
-                    result = agent_execute_tool(block['name'], block.get('input', {}), agent_ctx)
+                if stop_reason != 'tool_use':
+                    break
+
+                loop_messages.append({'role': 'assistant', 'content': content})
+                tool_results = []
+                for block in content:
+                    if block.get('type') != 'tool_use':
+                        continue
+                    tool_name = block['name']
+                    tool_input = block.get('input', {})
+
+                    if tool_name == 'solve_challenge':
+                        cid = tool_input.get('challenge_id', '')
+                        yield sse({'type': 'status', 'text': f'🔍 Attempting: {_get_challenge_name(cid)}…'})
+
+                    elif tool_name == 'list_challenges':
+                        yield sse({'type': 'status', 'text': '📋 Listing available challenges…'})
+
+                    elif tool_name == 'create_bot_user':
+                        yield sse({'type': 'status', 'text': f'👤 Setting up bot account…'})
+
+                    result = agent_execute_tool(tool_name, tool_input, agent_ctx)
+
+                    if tool_name == 'submit_flag':
+                        cid = tool_input.get('challenge_id', '')
+                        name = _get_challenge_name(cid)
+                        if result.get('success'):
+                            pts = result.get('points', 0)
+                            yield sse({'type': 'status', 'text': f'✓ Solved {name} — +{pts} pts', 'solved': True})
+                        elif result.get('already_solved'):
+                            yield sse({'type': 'status', 'text': f'↩ {name} already solved'})
+                        elif result.get('error'):
+                            yield sse({'type': 'status', 'text': f'✗ {name}: {result["error"]}'})
+
                     tool_results.append({
                         'type': 'tool_result',
                         'tool_use_id': block['id'],
                         'content': json.dumps(result),
                     })
-            loop_messages.append({'role': 'user', 'content': tool_results})
+                loop_messages.append({'role': 'user', 'content': tool_results})
 
-        return jsonify({'reply': '\n\n'.join(reply_parts), 'model': model, 'mode': mode})
-    except requests.exceptions.RequestException as e:
-        return jsonify({'error': f'Could not reach the model: {e}'}), 502
-    except (KeyError, IndexError, ValueError) as e:
-        return jsonify({'error': f'Unexpected response from the model: {e}'}), 502
+        except requests.exceptions.RequestException as e:
+            yield sse({'type': 'error', 'error': f'Could not reach the model: {e}'})
+            return
+        except (KeyError, IndexError, ValueError) as e:
+            yield sse({'type': 'error', 'error': f'Unexpected response from the model: {e}'})
+            return
+
+        yield sse({'type': 'done', 'reply': '\n\n'.join(reply_parts), 'model': model, 'mode': mode})
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype='text/event-stream',
+        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'},
+    )
 
 # ── Challenge 1: SQL Injection — Login Bypass ─────────────────────────────────
 @app.route('/challenges/sqli', methods=['GET', 'POST'])
@@ -1239,10 +1285,29 @@ def api_analyze():
     username = data.get('username', '').strip()
     challenge_id = data.get('challenge_id', '').strip()
 
-    if not username or challenge_id not in CHALLENGES:
+    if not username or not challenge_id:
         return jsonify({'error': 'Invalid request.'}), 400
 
     db = get_db()
+
+    # Resolve challenge from static registry or dynamic table
+    if challenge_id in CHALLENGES:
+        ch = dict(CHALLENGES[challenge_id])
+        ch.setdefault('desc', ch.get('desc', ''))
+    else:
+        dyn = db.execute('SELECT * FROM dynamic_challenges WHERE id = ?', [challenge_id]).fetchone()
+        if not dyn:
+            db.close()
+            return jsonify({'error': 'Invalid request.'}), 400
+        dyn = dict(dyn)
+        ch = {
+            'name': dyn['name'],
+            'category': dyn['category'],
+            'difficulty': dyn['difficulty'],
+            'points': dyn['points'],
+            'desc': dyn.get('description', ''),
+        }
+
     user = db.execute('SELECT * FROM users WHERE username = ?', [username]).fetchone()
     if not user:
         db.close()
@@ -1260,7 +1325,6 @@ def api_analyze():
     db.close()
 
     PLACEHOLDER = 'Solved before activity logging was enabled'
-    ch = CHALLENGES[challenge_id]
     vuln_label, vuln_code = CHALLENGE_VULN_CODE.get(challenge_id, ('', ''))
     is_solved = solved is not None
     real_rows = [r for r in activity_rows if PLACEHOLDER not in r['detail']]
